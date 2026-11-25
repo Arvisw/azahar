@@ -30,6 +30,7 @@ struct TextureInfo {
     Pica::PixelFormat format;
     GLenum gl_format;
     GLenum gl_type;
+    bool is_color_fill{};
 };
 
 /// Structure used for storing information about the display target for each 3DS screen
@@ -95,12 +96,10 @@ private:
     std::array<OGLSampler, 2> samplers;
 
     // Display information for top and bottom screens respectively
-    std::array<ScreenInfo, 3> screen_infos;
+    std::array<ScreenInfo, 3> screen_infos{};
 
     // Shader uniform location indices
     GLuint uniform_modelview_matrix;
-    GLuint uniform_color_texture;
-    GLuint uniform_color_texture_r;
 
     // Shader uniform for Dolphin compatibility
     GLuint uniform_i_resolution;

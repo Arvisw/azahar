@@ -173,20 +173,29 @@ void RendererOpenGL::RenderScreenshot() {
 void RendererOpenGL::PrepareRendertarget() {
     const auto& framebuffer_config = pica.regs.framebuffer_config;
     const auto& regs_lcd = pica.regs_lcd;
-    for (u32 i = 0; i < 3; i++) {
+#ifdef HAVE_LIBRETRO
+    const auto& layout = render_window.GetFramebufferLayout();
+    const bool single_eye = layout.render_3d_mode == Settings::StereoRenderOption::Off &&
+                            !settings.screenshot_requested.load();
+    const auto mono_eye = static_cast<u32>(Settings::values.mono_render_option.GetValue());
+#endif
+    for (u32 i = 0; i < screen_infos.size(); i++) {
+#ifdef HAVE_LIBRETRO
+        if (single_eye && i < 2 && i != mono_eye) {
+            continue;
+        }
+#endif
         const u32 fb_id = i == 2 ? 1 : 0;
         const auto& framebuffer = framebuffer_config[fb_id];
         auto& texture = screen_infos[i].texture;
 
         const auto color_fill = fb_id == 0 ? regs_lcd.color_fill_top : regs_lcd.color_fill_bottom;
-        if (color_fill.is_enabled) {
-            // Resize the texture to let it be reconfigured
-            texture.width = 1;
-            texture.height = 1;
-        }
-
-        if (texture.width != framebuffer.width || texture.height != framebuffer.height ||
-            texture.format != framebuffer.color_format) {
+        const bool is_color_fill = color_fill.is_enabled != 0;
+        const bool resize_framebuffer =
+            !is_color_fill &&
+            (texture.width != framebuffer.width || texture.height != framebuffer.height ||
+             texture.format != framebuffer.color_format);
+        if (texture.is_color_fill != is_color_fill || resize_framebuffer) {
             ConfigureFramebufferTexture(texture, framebuffer, color_fill);
         }
         LoadFBToScreenInfo(framebuffer, screen_infos[i], i == 1, color_fill);
@@ -282,16 +291,16 @@ void RendererOpenGL::LoadFBToScreenInfo(const Pica::FramebufferConfig& framebuff
         screen_info.display_texture = screen_info.texture.resource.handle;
         screen_info.display_texcoords = Common::Rectangle<f32>(0.f, 0.f, 1.f, 1.f);
 
-        rasterizer.FlushRegion(framebuffer_addr, framebuffer.stride * framebuffer.height);
-
-        u8* framebuffer_data = system.Memory().GetPhysicalPointer(framebuffer_addr);
-
+        const u8* framebuffer_data;
         if (color_fill.is_enabled) {
             memcpy(fill_pixel, color_fill.AsVector().AsArray(), sizeof(fill_pixel));
             framebuffer_data = fill_pixel;
             width = 1;
             height = 1;
             pixel_stride = 0;
+        } else {
+            rasterizer.FlushRegion(framebuffer_addr, framebuffer.stride * framebuffer.height);
+            framebuffer_data = system.Memory().GetPhysicalPointer(framebuffer_addr);
         }
 
         state.texture_units[0].texture_2d = screen_info.texture.resource.handle;
@@ -415,11 +424,11 @@ void RendererOpenGL::ReloadShader(Settings::StereoRenderOption render_3d) {
     state.draw.shader_program = shader.handle;
     state.Apply();
     uniform_modelview_matrix = glGetUniformLocation(shader.handle, "modelview_matrix");
-    uniform_color_texture = glGetUniformLocation(shader.handle, "color_texture");
+    glUniform1i(glGetUniformLocation(shader.handle, "color_texture"), 0);
     if (render_3d == Settings::StereoRenderOption::Anaglyph ||
         render_3d == Settings::StereoRenderOption::Interlaced ||
         render_3d == Settings::StereoRenderOption::ReverseInterlaced) {
-        uniform_color_texture_r = glGetUniformLocation(shader.handle, "color_texture_r");
+        glUniform1i(glGetUniformLocation(shader.handle, "color_texture_r"), 1);
     }
     if (render_3d == Settings::StereoRenderOption::Interlaced ||
         render_3d == Settings::StereoRenderOption::ReverseInterlaced) {
@@ -445,6 +454,7 @@ void RendererOpenGL::ConfigureFramebufferTexture(TextureInfo& texture,
     u32 width, height;
 
     texture.format = format;
+    texture.is_color_fill = color_fill.is_enabled != 0;
     width = texture.width = framebuffer.width;
     height = texture.height = framebuffer.height;
     if (color_fill.is_enabled) {
@@ -689,19 +699,6 @@ void RendererOpenGL::DrawScreens(const Layout::FramebufferLayout& layout, bool f
     std::array<GLfloat, 3 * 2> ortho_matrix =
         MakeOrthographicMatrix((float)layout.width, (float)layout.height, flipped);
     glUniformMatrix3x2fv(uniform_modelview_matrix, 1, GL_FALSE, ortho_matrix.data());
-
-    // Bind texture in Texture Unit 0
-    glUniform1i(uniform_color_texture, 0);
-
-    const bool stereo_single_screen =
-        layout.render_3d_mode == Settings::StereoRenderOption::Anaglyph ||
-        layout.render_3d_mode == Settings::StereoRenderOption::Interlaced ||
-        layout.render_3d_mode == Settings::StereoRenderOption::ReverseInterlaced;
-
-    // Bind a second texture for the right eye if in Anaglyph mode
-    if (stereo_single_screen) {
-        glUniform1i(uniform_color_texture_r, 1);
-    }
 
     glUniform1i(uniform_layer, 0);
     if (!Settings::values.swap_screen.GetValue()) {
