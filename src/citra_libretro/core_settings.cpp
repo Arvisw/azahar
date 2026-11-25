@@ -49,6 +49,11 @@ static constexpr const char* graphics_api = "citra_graphics_api";
 static constexpr const char* use_hw_shader = "citra_use_hw_shaders";
 static constexpr const char* use_shader_jit = "citra_use_shader_jit";
 static constexpr const char* shaders_accurate_mul = "citra_use_acc_mul";
+#ifdef __EMSCRIPTEN__
+static constexpr const char* default_accurate_mul = disabled;
+#else
+static constexpr const char* default_accurate_mul = enabled;
+#endif
 static constexpr const char* use_disk_shader_cache = "citra_use_hw_shader_cache";
 static constexpr const char* resolution_factor = "citra_resolution_factor";
 static constexpr const char* texture_filter = "citra_texture_filter";
@@ -323,7 +328,7 @@ static constexpr retro_core_option_v2_definition option_definitions[] = {
             { config::disabled, "Disabled" },
             { nullptr, nullptr }
         },
-        config::enabled
+        config::graphics::default_accurate_mul
     },
     {
         config::graphics::use_disk_shader_cache,
@@ -866,8 +871,8 @@ static void ParseGraphicsOptions(void) {
 #endif
 
     Settings::values.shaders_accurate_mul =
-        LibRetro::FetchVariable(config::graphics::shaders_accurate_mul, config::enabled) ==
-        config::enabled;
+        LibRetro::FetchVariable(config::graphics::shaders_accurate_mul,
+                               config::graphics::default_accurate_mul) == config::enabled;
 
     Settings::values.use_disk_shader_cache =
         LibRetro::FetchVariable(config::graphics::use_disk_shader_cache, config::enabled) ==
