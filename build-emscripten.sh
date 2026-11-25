@@ -28,6 +28,7 @@ cd "$BUILD_DIR"
 if [ ! -f CMakeCache.txt ]; then
     emcmake cmake .. \
         -DCMAKE_BUILD_TYPE=Release \
+        -DBUILD_SHARED_LIBS=OFF \
         -DCMAKE_CXX_FLAGS="-pthread -msimd128" \
         -DCMAKE_C_FLAGS="-pthread -msimd128" \
         -DENABLE_LIBRETRO=ON \
@@ -64,6 +65,9 @@ OUTPUT=azahar_libretro_emscripten.a
 } > merge.mri
 
 emar -M < merge.mri
+find src/citra_libretro/CMakeFiles/azahar_libretro.dir \
+     src/citra_libretro/CMakeFiles/azahar_libretro_common.dir \
+     -type f -name '*.o' -exec emar rcs "$OUTPUT" {} +
 
 echo
 echo "Built: $PWD/$OUTPUT ($(du -h "$OUTPUT" | cut -f1))"
